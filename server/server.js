@@ -3,6 +3,9 @@ const cors = require('cors');
 require('dotenv').config();
 const pool = require('./config/db');
 
+// Routes
+const authRoutes = require('./routes/authRoutes');
+
 const app = express();
 
 // Middleware
@@ -11,6 +14,9 @@ app.use(cors({
   credentials: true
 }));
 app.use(express.json());
+
+// API Routes
+app.use('/api/auth', authRoutes);
 
 // Health check route
 app.get('/api/health', async (req, res) => {
