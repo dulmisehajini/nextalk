@@ -1,12 +1,22 @@
 const express = require('express');
 const cors = require('cors');
+const http = require('http');
 require('dotenv').config();
 const pool = require('./config/db');
+const initializeSocket = require('./socket');
 
 // Routes
 const authRoutes = require('./routes/authRoutes');
 
+const channelRoutes = require('./routes/channelRoutes');
+
 const app = express();
+
+// Create HTTP server
+const server = http.createServer(app);
+
+// Initialize Socket.io
+const io = initializeSocket(server);
 
 // Middleware
 app.use(cors({
@@ -17,6 +27,8 @@ app.use(express.json());
 
 // API Routes
 app.use('/api/auth', authRoutes);
+
+app.use('/api/channels', channelRoutes);
 
 // Health check route
 app.get('/api/health', async (req, res) => {
@@ -38,6 +50,6 @@ app.get('/api/health', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`🚀 NexTalk server running on port ${PORT}`);
 });
