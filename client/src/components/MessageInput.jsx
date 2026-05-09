@@ -44,7 +44,7 @@ const MessageInput = ({ onSendMessage, onTyping, onStopTyping, channelName }) =>
           value={message}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
-          placeholder={channelName ? `Message # ${channelName}` : 'Type a message...'}
+          placeholder={channelName ? `Message with ${channelName}` : 'Type a message...'}
           className="flex-1 bg-transparent text-white placeholder-gray-400 focus:outline-none text-sm"
         />
         <button

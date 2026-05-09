@@ -1,6 +1,6 @@
 import { useAuth } from '../context/AuthContext';
 
-const Sidebar = ({ channels, currentChannel, onChannelSelect, onNewChannel, onlineUsers }) => {
+const Sidebar = ({ channels, currentChannel, onChannelSelect, onNewChannel, onlineUsers, onDeleteChannel }) => {
   const { user, logout } = useAuth();
 
   return (
@@ -28,17 +28,30 @@ const Sidebar = ({ channels, currentChannel, onChannelSelect, onNewChannel, onli
         {/* Channel Items */}
         <div className="space-y-1 mb-6">
           {channels.map((channel) => (
-            <button
+            <div
               key={channel.id}
-              onClick={() => onChannelSelect(channel)}
-              className={`w-full text-left px-3 py-2 rounded-lg text-sm transition duration-150 ${
+              className={`group flex items-center justify-between px-3 py-2 rounded-lg text-sm transition duration-150 cursor-pointer ${
                 currentChannel?.id === channel.id
                   ? 'bg-indigo-600 text-white'
                   : 'text-gray-400 hover:bg-gray-700 hover:text-white'
               }`}
+              onClick={() => onChannelSelect(channel)}
             >
-              # {channel.name}
-            </button>
+              <span>{channel.name}</span>
+              {/* Delete button - only show on hover for non-default channels */}
+              {!['general', 'random', 'introductions'].includes(channel.name) && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDeleteChannel(channel);
+                  }}
+                  className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-400 transition text-xs ml-2"
+                  title="Delete channel"
+                >
+                  🗑
+                </button>
+              )}
+            </div>
           ))}
         </div>
 

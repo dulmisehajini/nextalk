@@ -12,12 +12,15 @@ const Chat = () => {
   const [currentChannel, setCurrentChannel] = useState(null);
   const [messages, setMessages] = useState([]);
   const [typingUser, setTypingUser] = useState(null);
-  const [onlineUsers, setOnlineUsers] = useState([]); // ✅ NEW
+  const [onlineUsers, setOnlineUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showNewChannel, setShowNewChannel] = useState(false);
   const [newChannelName, setNewChannelName] = useState('');
   const [newChannelDesc, setNewChannelDesc] = useState('');
   const socketRef = useRef(null);
+  const channelsRef = useRef([]);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [errorMessage, setErrorMessage] = useState(null);
 
   // Connect to Socket.io
   useEffect(() => {
@@ -27,18 +30,22 @@ const Chat = () => {
 
     socketRef.current.on('connect', () => {
       console.log('⚡ Connected to NexTalk!');
+      // Auto join first channel AFTER socket is connected
+      const savedChannels = channelsRef.current;
+      if (savedChannels && savedChannels.length > 0) {
+        handleChannelSelect(savedChannels[0]);
+      }
     });
 
     socketRef.current.on('message-history', (history) => {
       setMessages(history);
-      setLoading(false); // ✅ NEW
+      setLoading(false);
     });
 
     socketRef.current.on('receive-message', (message) => {
       setMessages((prev) => [...prev, message]);
     });
 
-    // ✅ NEW - Online users
     socketRef.current.on('online-users', (users) => {
       setOnlineUsers(users);
     });
@@ -55,7 +62,6 @@ const Chat = () => {
       console.log(`${username} joined the channel`);
     });
 
-    // ✅ NEW - User left
     socketRef.current.on('user-left', ({ username }) => {
       console.log(`${username} left the channel`);
     });
@@ -71,9 +77,7 @@ const Chat = () => {
       try {
         const res = await axios.get('/api/channels');
         setChannels(res.data);
-        if (res.data.length > 0) {
-          handleChannelSelect(res.data[0]);
-        }
+        channelsRef.current = res.data;
       } catch (error) {
         console.error('Failed to fetch channels:', error);
       }
@@ -86,7 +90,7 @@ const Chat = () => {
     setMessages([]);
     setTypingUser(null);
     setOnlineUsers([]);
-    setLoading(true); // ✅ NEW
+    setLoading(true);
     if (socketRef.current) {
       socketRef.current.emit('join-channel', channel.id);
     }
@@ -127,6 +131,26 @@ const Chat = () => {
     }
   };
 
+  const handleDeleteChannel = async (channel) => {
+    setDeleteConfirm(channel);
+  };
+
+  const confirmDelete = async () => {
+    const channel = deleteConfirm;
+    setDeleteConfirm(null);
+    try {
+      await axios.delete(`/api/channels/${channel.id}`);
+      setChannels((prev) => prev.filter((c) => c.id !== channel.id));
+      if (currentChannel?.id === channel.id) {
+        const general = channels.find((c) => c.name === 'general');
+        if (general) handleChannelSelect(general);
+        else setCurrentChannel(null);
+      }
+    } catch (error) {
+      setErrorMessage(error.response?.data?.message || 'Failed to delete channel');
+    }
+  };
+
   return (
     <div className="flex h-screen bg-gray-900">
       {/* Sidebar */}
@@ -135,23 +159,35 @@ const Chat = () => {
         currentChannel={currentChannel}
         onChannelSelect={handleChannelSelect}
         onNewChannel={() => setShowNewChannel(true)}
-        onlineUsers={onlineUsers} // ✅ NEW
+        onlineUsers={onlineUsers}
+        onDeleteChannel={handleDeleteChannel}
       />
 
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col">
+
+        {/* ✅ NEW — No channel selected */}
+        {!currentChannel && (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center">
+              <p className="text-5xl mb-3">💬</p>
+              <p className="text-white font-semibold text-lg">Welcome to NexTalk!</p>
+              <p className="text-gray-400 text-sm mt-1">Select a channel to start chatting</p>
+            </div>
+          </div>
+        )}
+
         {/* Channel Header */}
         {currentChannel && (
           <div className="px-6 border-b border-gray-700 bg-gray-800 flex items-center justify-between" style={{height: '64px'}}>
             <div>
               <h2 className="text-white font-semibold text-lg">
-                # {currentChannel.name}
+                {currentChannel.name}
               </h2>
               {currentChannel.description && (
                 <p className="text-gray-400 text-sm">{currentChannel.description}</p>
               )}
             </div>
-            {/* Online count */}
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 bg-green-500 rounded-full"></div>
               <span className="text-gray-400 text-sm">
@@ -162,19 +198,23 @@ const Chat = () => {
         )}
 
         {/* Messages */}
-        <MessageList
-          messages={messages}
-          typingUser={typingUser}
-          loading={loading}
-        />
+        {currentChannel && (
+          <MessageList
+            messages={messages}
+            typingUser={typingUser}
+            loading={loading}
+          />
+        )}
 
         {/* Message Input */}
-        <MessageInput
-          onSendMessage={handleSendMessage}
-          onTyping={handleTyping}
-          onStopTyping={handleStopTyping}
-          channelName={currentChannel?.name}
-        />
+        {currentChannel && (
+          <MessageInput
+            onSendMessage={handleSendMessage}
+            onTyping={handleTyping}
+            onStopTyping={handleStopTyping}
+            channelName={currentChannel?.name}
+          />
+        )}
       </div>
 
       {/* New Channel Modal */}
@@ -187,7 +227,7 @@ const Chat = () => {
                 type="text"
                 value={newChannelName}
                 onChange={(e) => setNewChannelName(e.target.value)}
-                placeholder="channel-name"
+                placeholder="Channel name"
                 className="w-full px-4 py-3 bg-gray-700 text-white rounded-lg border border-gray-600 focus:outline-none focus:border-indigo-500"
               />
               <input
@@ -215,7 +255,52 @@ const Chat = () => {
           </div>
         </div>
       )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+            <h3 className="text-white font-bold text-lg mb-2">Delete Channel</h3>
+            <p className="text-gray-400 text-sm mb-6">
+              Are you sure you want to delete <span className="text-white font-semibold">"{deleteConfirm.name}"</span>? This will delete all messages too. This cannot be undone!
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={confirmDelete}
+                className="flex-1 py-3 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg transition"
+              >
+                Delete
+              </button>
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                className="flex-1 py-3 bg-gray-700 hover:bg-gray-600 text-white font-semibold rounded-lg transition"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Error Modal */}
+      {errorMessage && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+            <h3 className="text-red-400 font-bold text-lg mb-2">⚠️ Error</h3>
+            <p className="text-gray-300 text-sm mb-6">{errorMessage}</p>
+            <button
+              onClick={() => setErrorMessage(null)}
+              className="w-full py-3 bg-gray-700 hover:bg-gray-600 text-white font-semibold rounded-lg transition"
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
+
     </div>
+
+    
   );
 };
 
