@@ -12,6 +12,7 @@ const Chat = () => {
   const [currentChannel, setCurrentChannel] = useState(null);
   const [messages, setMessages] = useState([]);
   const [typingUser, setTypingUser] = useState(null);
+  const [onlineUsers, setOnlineUsers] = useState([]); // ✅ NEW
   const [showNewChannel, setShowNewChannel] = useState(false);
   const [newChannelName, setNewChannelName] = useState('');
   const [newChannelDesc, setNewChannelDesc] = useState('');
@@ -35,6 +36,11 @@ const Chat = () => {
       setMessages((prev) => [...prev, message]);
     });
 
+    // ✅ NEW - Online users
+    socketRef.current.on('online-users', (users) => {
+      setOnlineUsers(users);
+    });
+
     socketRef.current.on('user-typing', ({ username }) => {
       setTypingUser(username);
     });
@@ -45,6 +51,11 @@ const Chat = () => {
 
     socketRef.current.on('user-joined', ({ username }) => {
       console.log(`${username} joined the channel`);
+    });
+
+    // ✅ NEW - User left
+    socketRef.current.on('user-left', ({ username }) => {
+      console.log(`${username} left the channel`);
     });
 
     return () => {
@@ -58,7 +69,6 @@ const Chat = () => {
       try {
         const res = await axios.get('/api/channels');
         setChannels(res.data);
-        // Auto join first channel
         if (res.data.length > 0) {
           handleChannelSelect(res.data[0]);
         }
@@ -73,6 +83,7 @@ const Chat = () => {
     setCurrentChannel(channel);
     setMessages([]);
     setTypingUser(null);
+    setOnlineUsers([]); // ✅ NEW - reset online users on channel switch
     if (socketRef.current) {
       socketRef.current.emit('join-channel', channel.id);
     }
@@ -121,6 +132,7 @@ const Chat = () => {
         currentChannel={currentChannel}
         onChannelSelect={handleChannelSelect}
         onNewChannel={() => setShowNewChannel(true)}
+        onlineUsers={onlineUsers} // ✅ NEW
       />
 
       {/* Main Chat Area */}

@@ -10,14 +10,12 @@ const initializeSocket = (server) => {
     }
   });
 
-  // Authenticate socket connection using JWT
+  // Track online users per channel
+  const channelUsers = new Map();
+
   io.use((socket, next) => {
     const token = socket.handshake.auth.token;
-
-    if (!token) {
-      return next(new Error('Authentication error - no token'));
-    }
-
+    if (!token) return next(new Error('Authentication error - no token'));
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       socket.userId = decoded.userId;
@@ -30,7 +28,6 @@ const initializeSocket = (server) => {
   io.on('connection', async (socket) => {
     console.log(`⚡ User connected: ${socket.userId}`);
 
-    // Get user info from database
     const userResult = await pool.query(
       'SELECT id, username, avatar_color FROM users WHERE id = $1',
       [socket.userId]
@@ -38,20 +35,41 @@ const initializeSocket = (server) => {
     const user = userResult.rows[0];
     socket.username = user.username;
     socket.avatarColor = user.avatar_color;
+    socket.currentChannel = null;
 
     // Join a channel room
     socket.on('join-channel', async (channelId) => {
-      // Leave all previous rooms except own socket room
-      const rooms = [...socket.rooms];
-      rooms.forEach((room) => {
-        if (room !== socket.id) socket.leave(room);
+      // Leave previous channel
+      if (socket.currentChannel) {
+        const prevUsers = channelUsers.get(socket.currentChannel) || new Map();
+        prevUsers.delete(socket.userId);
+        channelUsers.set(socket.currentChannel, prevUsers);
+
+        // Notify previous channel
+        socket.to(socket.currentChannel).emit('online-users', 
+          Array.from(prevUsers.values())
+        );
+        socket.leave(socket.currentChannel);
+      }
+
+      // Join new channel
+      socket.join(channelId);
+      socket.currentChannel = channelId;
+
+      // Add user to channel's online list
+      if (!channelUsers.has(channelId)) {
+        channelUsers.set(channelId, new Map());
+      }
+      const users = channelUsers.get(channelId);
+      users.set(socket.userId, {
+        id: socket.userId,
+        username: user.username,
+        avatarColor: user.avatar_color
       });
 
-      // Join the new channel room
-      socket.join(channelId);
       console.log(`📢 ${user.username} joined channel: ${channelId}`);
 
-      // Load message history from database
+      // Send message history
       const messages = await pool.query(
         `SELECT m.id, m.content, m.created_at,
                 u.id as user_id, u.username, u.avatar_color
@@ -62,11 +80,12 @@ const initializeSocket = (server) => {
          LIMIT 50`,
         [channelId]
       );
-
-      // Send message history to the user who just joined
       socket.emit('message-history', messages.rows);
 
-      // Notify others in the room
+      // Send online users to everyone in channel
+      io.to(channelId).emit('online-users', Array.from(users.values()));
+
+      // Notify others
       socket.to(channelId).emit('user-joined', {
         username: user.username,
         avatarColor: user.avatar_color
@@ -76,11 +95,9 @@ const initializeSocket = (server) => {
     // Handle sending a message
     socket.on('send-message', async (data) => {
       const { channelId, content } = data;
-
       if (!content || !content.trim()) return;
 
       try {
-        // Save message to database
         const result = await pool.query(
           `INSERT INTO messages (content, user_id, channel_id)
            VALUES ($1, $2, $3)
@@ -90,12 +107,11 @@ const initializeSocket = (server) => {
 
         const message = result.rows[0];
 
-        // Broadcast message to everyone in the channel room
         io.to(channelId).emit('receive-message', {
           id: message.id,
           content: message.content,
           createdAt: message.created_at,
-          userId: socket.userId,
+          user_id: socket.userId,
           username: user.username,
           avatarColor: user.avatar_color
         });
@@ -106,22 +122,34 @@ const initializeSocket = (server) => {
       }
     });
 
-    // Handle typing indicators
+    // Typing indicators
     socket.on('typing-start', (channelId) => {
-      socket.to(channelId).emit('user-typing', {
-        username: user.username
-      });
+      socket.to(channelId).emit('user-typing', { username: user.username });
     });
 
     socket.on('typing-stop', (channelId) => {
-      socket.to(channelId).emit('user-stop-typing', {
-        username: user.username
-      });
+      socket.to(channelId).emit('user-stop-typing', { username: user.username });
     });
 
     // Handle disconnect
     socket.on('disconnect', () => {
       console.log(`❌ User disconnected: ${user.username}`);
+
+      if (socket.currentChannel) {
+        const users = channelUsers.get(socket.currentChannel) || new Map();
+        users.delete(socket.userId);
+        channelUsers.set(socket.currentChannel, users);
+
+        // Notify channel of updated online users
+        io.to(socket.currentChannel).emit('online-users',
+          Array.from(users.values())
+        );
+
+        // Notify others user left
+        socket.to(socket.currentChannel).emit('user-left', {
+          username: user.username
+        });
+      }
     });
   });
 
