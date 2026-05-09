@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 
-const MessageInput = ({ onSendMessage, onTyping, onStopTyping }) => {
+const MessageInput = ({ onSendMessage, onTyping, onStopTyping, channelName }) => {
   const [message, setMessage] = useState('');
   const typingTimeoutRef = useRef(null);
 
@@ -44,7 +44,7 @@ const MessageInput = ({ onSendMessage, onTyping, onStopTyping }) => {
           value={message}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
-          placeholder="Type a message... (Enter to send)"
+          placeholder={channelName ? `Message # ${channelName}` : 'Type a message...'} {/* ✅ NEW */}
           className="flex-1 bg-transparent text-white placeholder-gray-400 focus:outline-none text-sm"
         />
         <button
@@ -52,7 +52,7 @@ const MessageInput = ({ onSendMessage, onTyping, onStopTyping }) => {
           disabled={!message.trim()}
           className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg text-sm font-medium transition duration-200"
         >
-          Send
+          Send ➤ {/* ✅ NEW - added arrow */}
         </button>
       </div>
       <p className="text-gray-600 text-xs mt-1 ml-1">

@@ -13,6 +13,7 @@ const Chat = () => {
   const [messages, setMessages] = useState([]);
   const [typingUser, setTypingUser] = useState(null);
   const [onlineUsers, setOnlineUsers] = useState([]); // ✅ NEW
+  const [loading, setLoading] = useState(false);
   const [showNewChannel, setShowNewChannel] = useState(false);
   const [newChannelName, setNewChannelName] = useState('');
   const [newChannelDesc, setNewChannelDesc] = useState('');
@@ -30,6 +31,7 @@ const Chat = () => {
 
     socketRef.current.on('message-history', (history) => {
       setMessages(history);
+      setLoading(false); // ✅ NEW
     });
 
     socketRef.current.on('receive-message', (message) => {
@@ -83,7 +85,8 @@ const Chat = () => {
     setCurrentChannel(channel);
     setMessages([]);
     setTypingUser(null);
-    setOnlineUsers([]); // ✅ NEW - reset online users on channel switch
+    setOnlineUsers([]);
+    setLoading(true); // ✅ NEW
     if (socketRef.current) {
       socketRef.current.emit('join-channel', channel.id);
     }
@@ -139,13 +142,22 @@ const Chat = () => {
       <div className="flex-1 flex flex-col">
         {/* Channel Header */}
         {currentChannel && (
-          <div className="px-6 border-b border-gray-700 bg-gray-800 flex flex-col justify-center" style={{height: '64px'}}>
-            <h2 className="text-white font-semibold text-lg">
-              # {currentChannel.name}
-            </h2>
-            {currentChannel.description && (
-              <p className="text-gray-400 text-sm">{currentChannel.description}</p>
-            )}
+          <div className="px-6 border-b border-gray-700 bg-gray-800 flex items-center justify-between" style={{height: '64px'}}>
+            <div>
+              <h2 className="text-white font-semibold text-lg">
+                # {currentChannel.name}
+              </h2>
+              {currentChannel.description && (
+                <p className="text-gray-400 text-sm">{currentChannel.description}</p>
+              )}
+            </div>
+            {/* Online count */}
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+              <span className="text-gray-400 text-sm">
+                {onlineUsers.length} online
+              </span>
+            </div>
           </div>
         )}
 
@@ -153,6 +165,7 @@ const Chat = () => {
         <MessageList
           messages={messages}
           typingUser={typingUser}
+          loading={loading}
         />
 
         {/* Message Input */}
@@ -160,6 +173,7 @@ const Chat = () => {
           onSendMessage={handleSendMessage}
           onTyping={handleTyping}
           onStopTyping={handleStopTyping}
+          channelName={currentChannel?.name}
         />
       </div>
 
